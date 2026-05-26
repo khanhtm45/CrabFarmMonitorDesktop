@@ -1,0 +1,23 @@
+import 'package:flutter/material.dart';
+
+import 'device_status.dart';
+
+class FarmDevice {
+  const FarmDevice({
+    required this.id,
+    required this.name,
+    required this.typeLabel,
+    required this.location,
+    required this.status,
+    required this.lastSync,
+    required this.icon,
+  });
+
+  final String id;
+  final String name;
+  final String typeLabel;
+  final String location;
+  final DeviceStatus status;
+  final String lastSync;
+  final IconData icon;
+}
