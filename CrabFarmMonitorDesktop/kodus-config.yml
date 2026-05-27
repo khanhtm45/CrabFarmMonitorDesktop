@@ -19,4 +19,4 @@ customMessages:
 
 
       @changeSummary
-    status: 'off'
+    status: only_when_opened
