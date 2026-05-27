@@ -20,3 +20,5 @@ customMessages:
 
       @changeSummary
     status: only_when_opened
+  globalSettings:
+    hideComments: true
