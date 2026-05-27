@@ -1,0 +1,22 @@
+customMessages:
+  startReviewMessage:
+    content: >
+      # PR Summary (Comment created by [Kody](https://kodus.io) 🤖)
+
+
+      ## Code Review Started! 🚀
+
+
+      ✋ Hi, team! I'm already looking at the changed files and starting the
+      review to ensure everything is in order. If you need more details, I'm
+      here! [Kody](https://kodus.io)
+
+
+      @reviewCadence
+
+
+      @changedFiles
+
+
+      @changeSummary
+    status: only_when_opened
