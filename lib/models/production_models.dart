@@ -1,3 +1,38 @@
+class AreaSummaryStats {
+  const AreaSummaryStats({
+    required this.total,
+    required this.active,
+    required this.maintenance,
+    required this.disabled,
+    required this.totalBoxes,
+  });
+
+  final int total;
+  final int active;
+  final int maintenance;
+  final int disabled;
+  final int totalBoxes;
+
+  factory AreaSummaryStats.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return const AreaSummaryStats(
+        total: 0,
+        active: 0,
+        maintenance: 0,
+        disabled: 0,
+        totalBoxes: 0,
+      );
+    }
+    return AreaSummaryStats(
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      active: (json['active'] as num?)?.toInt() ?? 0,
+      maintenance: (json['maintenance'] as num?)?.toInt() ?? 0,
+      disabled: (json['disabled'] as num?)?.toInt() ?? 0,
+      totalBoxes: (json['totalBoxes'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class AreaRecord {
   const AreaRecord({
     required this.id,
@@ -5,6 +40,12 @@ class AreaRecord {
     required this.areaCode,
     required this.areaName,
     this.description,
+    this.status = 'active',
+    this.createdAt,
+    this.rowCount = 0,
+    this.boxCount = 0,
+    this.esp32Count = 0,
+    this.cameraCount = 0,
   });
 
   final String id;
@@ -12,6 +53,15 @@ class AreaRecord {
   final String areaCode;
   final String areaName;
   final String? description;
+  final String status;
+  final DateTime? createdAt;
+  final int rowCount;
+  final int boxCount;
+  final int esp32Count;
+  final int cameraCount;
+
+  String get subtitle =>
+      description?.trim().isNotEmpty == true ? description!.trim() : areaCode;
 
   factory AreaRecord.fromJson(Map<String, dynamic> json) => AreaRecord(
         id: (json['id'] ?? json['Id']).toString(),
@@ -19,6 +69,42 @@ class AreaRecord {
         areaCode: (json['areaCode'] ?? json['AreaCode'] ?? '').toString(),
         areaName: (json['areaName'] ?? json['AreaName'] ?? '').toString(),
         description: (json['description'] ?? json['Description'])?.toString(),
+        status: (json['status'] ?? json['Status'] ?? 'active').toString(),
+        createdAt: _parseAreaDate(json['createdAt'] ?? json['CreatedAt']),
+        rowCount:
+            ((json['rowCount'] ?? json['RowCount']) as num?)?.toInt() ?? 0,
+        boxCount:
+            ((json['boxCount'] ?? json['BoxCount']) as num?)?.toInt() ?? 0,
+        esp32Count:
+            ((json['esp32Count'] ?? json['Esp32Count']) as num?)?.toInt() ?? 0,
+        cameraCount:
+            ((json['cameraCount'] ?? json['CameraCount']) as num?)?.toInt() ??
+                0,
+      );
+
+  static DateTime? _parseAreaDate(dynamic raw) {
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString());
+  }
+
+  AreaRecord copyWith({
+    int? rowCount,
+    int? boxCount,
+    int? esp32Count,
+    int? cameraCount,
+  }) =>
+      AreaRecord(
+        id: id,
+        farmId: farmId,
+        areaCode: areaCode,
+        areaName: areaName,
+        description: description,
+        status: status,
+        createdAt: createdAt,
+        rowCount: rowCount ?? this.rowCount,
+        boxCount: boxCount ?? this.boxCount,
+        esp32Count: esp32Count ?? this.esp32Count,
+        cameraCount: cameraCount ?? this.cameraCount,
       );
 }
 

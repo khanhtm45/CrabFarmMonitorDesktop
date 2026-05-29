@@ -36,10 +36,39 @@ extension ProductionCloudApi on CloudApiClient {
   }
 
   Future<List<AreaRecord>> fetchAreas(String token, String farmId) async {
+    final result = await fetchAreasWithSummary(token, farmId);
+    return result.areas;
+  }
+
+  Future<({List<AreaRecord> areas, AreaSummaryStats summary})>
+      fetchAreasWithSummary(String token, String farmId) async {
     final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/areas')
         .replace(queryParameters: {'farmId': farmId});
     final res = await _client.get(uri, headers: authHeaders(token, farmId: farmId));
-    return _parseList(res, 'areas', AreaRecord.fromJson);
+    final map = _decode(res);
+    _ensureOk(res);
+    final areas = _parseList(res, 'areas', AreaRecord.fromJson);
+    final summary =
+        AreaSummaryStats.fromJson(map['summary'] as Map<String, dynamic>?);
+    return (areas: areas, summary: summary);
+  }
+
+  Future<({AreaRecord detail, List<RowRecord> rows, List<BoxRecord> boxes})>
+      fetchAreaDetail(String token, String areaId) async {
+    final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/areas/$areaId/detail');
+    final res = await _client.get(uri, headers: authHeaders(token));
+    final map = _decode(res);
+    _ensureOk(res);
+    final detail = AreaRecord.fromJson(
+      map['detail'] as Map<String, dynamic>? ?? {},
+    );
+    final rows = (map['rows'] as List<dynamic>? ?? [])
+        .map((e) => RowRecord.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final boxes = (map['boxes'] as List<dynamic>? ?? [])
+        .map((e) => BoxRecord.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return (detail: detail, rows: rows, boxes: boxes);
   }
 
   Future<AreaRecord> createArea(
@@ -48,6 +77,7 @@ extension ProductionCloudApi on CloudApiClient {
     required String areaName,
     String? areaCode,
     String? description,
+    String status = 'active',
   }) async {
     final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/areas')
         .replace(queryParameters: {'farmId': farmId});
@@ -58,6 +88,7 @@ extension ProductionCloudApi on CloudApiClient {
         'areaName': areaName,
         if (areaCode != null && areaCode.isNotEmpty) 'areaCode': areaCode,
         if (description != null) 'description': description,
+        'status': status,
       }),
     );
     return _parseSingle(res, 'area', AreaRecord.fromJson);
@@ -69,6 +100,7 @@ extension ProductionCloudApi on CloudApiClient {
     required String areaCode,
     required String areaName,
     String? description,
+    String? status,
   }) async {
     final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/areas/$areaId');
     final res = await _client.put(
@@ -78,6 +110,7 @@ extension ProductionCloudApi on CloudApiClient {
         'areaCode': areaCode,
         'areaName': areaName,
         'description': description,
+        if (status != null) 'status': status,
       }),
     );
     return _parseSingle(res, 'area', AreaRecord.fromJson);

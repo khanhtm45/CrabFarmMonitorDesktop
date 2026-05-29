@@ -80,6 +80,8 @@ abstract final class DashboardColors {
   static Color get textMuted => _palette.textMuted;
   static Color get sidebarBg => _palette.sidebarBg;
 
+  static const seaGreen = Color(0xFF14B8A6);
+  static const oceanBlue = Color(0xFF0EA5E9);
   static const healthy = Color(0xFF22C55E);
   static const monitoring = Color(0xFFEAB308);
   static const molting = Color(0xFFF97316);

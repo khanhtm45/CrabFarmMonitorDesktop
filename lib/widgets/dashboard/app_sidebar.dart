@@ -74,7 +74,8 @@ class AppSidebar extends StatelessWidget {
       (r == AppRoute.batches && selected == AppRoute.batchDetail) ||
       (r == AppRoute.individuals &&
           (selected == AppRoute.individualDetail ||
-              selected == AppRoute.individualHealth));
+              selected == AppRoute.individualHealth)) ||
+      (r == AppRoute.areaManagement && selected == AppRoute.areaDetail);
 
   @override
   Widget build(BuildContext context) {

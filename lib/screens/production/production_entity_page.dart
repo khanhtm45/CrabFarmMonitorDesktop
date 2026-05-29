@@ -110,7 +110,7 @@ class _ProductionEntityPageState extends State<ProductionEntityPage> {
         ),
         Expanded(
           child: switch (_tab) {
-            ProductionTab.area => _AreaTab(svc: svc),
+            ProductionTab.area => const SizedBox.shrink(),
             ProductionTab.row => _RowTab(svc: svc),
             ProductionTab.box => _BoxTab(svc: svc),
             ProductionTab.batch => _BatchTab(svc: svc),

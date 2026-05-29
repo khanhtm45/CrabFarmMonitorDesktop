@@ -18,7 +18,10 @@ import 'crab/crab_list_page.dart';
 import 'dashboard_screen.dart';
 import 'farm/farm_layout_page.dart';
 import 'farm/farm_management_page.dart';
+import 'area/area_detail_page.dart';
+import 'area/area_management_page.dart';
 import 'production/production_entity_page.dart';
+import '../services/area_management_service.dart';
 import 'health/health_monitoring_page.dart';
 import 'camera/camera_ai_page.dart';
 import 'environment/water_quality_page.dart';
@@ -73,6 +76,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
   late final WaterQualityService _waterQualityService;
   late final FarmManagementService _farmManagementService;
   late final ProductionManagementService _productionManagementService;
+  late final AreaManagementService _areaManagementService;
   final _iotDeviceService = IotDeviceService();
   final _alertService = AlertService();
   final _farmLogService = FarmLogService();
@@ -86,6 +90,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
   AppRoute _route = AppRoute.dashboard;
   CrabBatch? _selectedBatch;
   String? _selectedCrabId;
+  String? _selectedAreaId;
 
   @override
   void initState() {
@@ -97,6 +102,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     _farmManagementService = FarmManagementService(session: _session);
     _productionManagementService =
         ProductionManagementService(session: _session);
+    _areaManagementService = AreaManagementService(session: _session);
     _connectivityLinkService.addListener(_onConnectivityUpdate);
     _connectivityLinkService.refreshCloud();
     if (_session.isOrgAdmin) {
@@ -123,6 +129,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     _waterQualityService.updateSession(_session);
     _farmManagementService.updateSession(_session);
     _productionManagementService.updateSession(_session);
+    _areaManagementService.updateSession(_session);
   }
 
   Future<void> _refreshAdminFarms() async {
@@ -161,6 +168,9 @@ class _MainShellScreenState extends State<MainShellScreen> {
     _waterQualityService.updateSession(_session);
     if (_route.isProductionRoute) {
       _productionManagementService.loadCurrentTab();
+    }
+    if (_route == AppRoute.areaManagement || _route == AppRoute.areaDetail) {
+      _areaManagementService.load();
     }
     _connectivityLinkService.refreshCloud();
     _waterQualityService.refreshTrend(quiet: true);
@@ -209,6 +219,27 @@ class _MainShellScreenState extends State<MainShellScreen> {
       _productionManagementService.setTab(productionTabForRoute(route));
       _productionManagementService.loadCurrentTab();
     }
+    if (route == AppRoute.areaManagement) {
+      _areaManagementService.load();
+    }
+    if (route != AppRoute.areaDetail) {
+      _selectedAreaId = null;
+    }
+  }
+
+  void _openAreaDetail(String areaId) {
+    setState(() {
+      _selectedAreaId = areaId;
+      _route = AppRoute.areaDetail;
+    });
+  }
+
+  void _backToAreaList() {
+    setState(() {
+      _route = AppRoute.areaManagement;
+      _selectedAreaId = null;
+    });
+    _areaManagementService.load();
   }
 
   void _openBatchDetail(CrabBatch batch) {
@@ -274,6 +305,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     final sidebarRoute = switch (_route) {
       AppRoute.batchDetail => AppRoute.batches,
       AppRoute.individualDetail || AppRoute.individualHealth => AppRoute.individuals,
+      AppRoute.areaDetail => AppRoute.areaManagement,
       _ => _route,
     };
 
@@ -391,9 +423,26 @@ class _MainShellScreenState extends State<MainShellScreen> {
       );
     }
 
+    if (_route == AppRoute.areaManagement) {
+      return _shellTopBar(
+        searchHint: 'Tìm mã khu, tên khu...',
+        onSearchChanged: _areaManagementService.setSearch,
+        centerTitle: const SizedBox.shrink(),
+      );
+    }
+
+    if (_route == AppRoute.areaDetail) {
+      return _shellTopBar(
+        centerTitle: const SizedBox.shrink(),
+        leading: IconButton(
+          onPressed: _backToAreaList,
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF94A3B8)),
+        ),
+      );
+    }
+
     if (_route.isProductionRoute) {
       final hint = switch (_route) {
-        AppRoute.areaManagement => 'Tìm mã khu, tên khu...',
         AppRoute.rowManagement => 'Tìm mã dãy, tên dãy...',
         AppRoute.boxManagement => 'Tìm mã hộp, vị trí...',
         AppRoute.farmingBatchManagement => 'Tìm mã đợt nuôi...',
@@ -518,6 +567,28 @@ class _MainShellScreenState extends State<MainShellScreen> {
           onFarmsChanged: _syncSessionFarmsFromRecords,
         );
       case AppRoute.areaManagement:
+        return AreaManagementPage(
+          service: _areaManagementService,
+          onNavigate: _navigate,
+          onOpenDetail: (a) => _openAreaDetail(a.id),
+        );
+      case AppRoute.areaDetail:
+        final areaId = _selectedAreaId ??
+            (_areaManagementService.areas.isNotEmpty
+                ? _areaManagementService.areas.first.id
+                : null);
+        if (areaId == null) {
+          return AreaManagementPage(
+            service: _areaManagementService,
+            onNavigate: _navigate,
+            onOpenDetail: (a) => _openAreaDetail(a.id),
+          );
+        }
+        return AreaDetailPage(
+          service: _areaManagementService,
+          areaId: areaId,
+          onBack: _backToAreaList,
+        );
       case AppRoute.rowManagement:
       case AppRoute.boxManagement:
       case AppRoute.farmingBatchManagement:
