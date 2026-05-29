@@ -44,6 +44,7 @@ class AppTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final searchKey = ValueKey('search-$searchHint');
     return Container(
       height: 80,
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -78,6 +79,7 @@ class AppTopBar extends StatelessWidget {
                     border: Border.all(color: DashboardColors.cardBorder),
                   ),
                   child: TextField(
+                    key: searchKey,
                     onChanged: onSearchChanged,
                     style: GoogleFonts.notoSans(
                       color: DashboardColors.textPrimary,

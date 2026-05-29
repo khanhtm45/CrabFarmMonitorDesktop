@@ -7,6 +7,9 @@ import '../config/app_env.dart';
 import '../models/auth_models.dart';
 import '../models/cloud_telemetry.dart';
 import '../models/farm_record.dart';
+import '../models/production_models.dart';
+
+part 'production_cloud_api.dart';
 
 class CloudApiException implements Exception {
   CloudApiException(this.message, {this.statusCode});

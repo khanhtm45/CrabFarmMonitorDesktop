@@ -18,6 +18,7 @@ import 'crab/crab_list_page.dart';
 import 'dashboard_screen.dart';
 import 'farm/farm_layout_page.dart';
 import 'farm/farm_management_page.dart';
+import 'production/production_management_page.dart';
 import 'health/health_monitoring_page.dart';
 import 'camera/camera_ai_page.dart';
 import 'environment/water_quality_page.dart';
@@ -35,6 +36,7 @@ import '../services/water_quality_service.dart';
 import '../services/iot_device_service.dart';
 import '../services/alert_service.dart';
 import '../services/farm_management_service.dart';
+import '../services/production_management_service.dart';
 import '../services/farm_log_service.dart';
 import '../services/feed_service.dart';
 import '../services/harvest_sales_service.dart';
@@ -70,6 +72,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
   final _cameraAiService = CameraAiService();
   late final WaterQualityService _waterQualityService;
   late final FarmManagementService _farmManagementService;
+  late final ProductionManagementService _productionManagementService;
   final _iotDeviceService = IotDeviceService();
   final _alertService = AlertService();
   final _farmLogService = FarmLogService();
@@ -92,6 +95,8 @@ class _MainShellScreenState extends State<MainShellScreen> {
         ConnectivityLinkService(session: _session);
     _waterQualityService = WaterQualityService(session: _session);
     _farmManagementService = FarmManagementService(session: _session);
+    _productionManagementService =
+        ProductionManagementService(session: _session);
     _connectivityLinkService.addListener(_onConnectivityUpdate);
     _connectivityLinkService.refreshCloud();
     if (_session.isOrgAdmin) {
@@ -109,10 +114,15 @@ class _MainShellScreenState extends State<MainShellScreen> {
         : summaries.first;
     setState(() {
       _session = _session.copyWith(farms: summaries, selectedFarm: selected);
-      _connectivityLinkService.updateSession(_session);
-      _waterQualityService.updateSession(_session);
-      _farmManagementService.updateSession(_session);
     });
+    _applySessionToServices();
+  }
+
+  void _applySessionToServices() {
+    _connectivityLinkService.updateSession(_session);
+    _waterQualityService.updateSession(_session);
+    _farmManagementService.updateSession(_session);
+    _productionManagementService.updateSession(_session);
   }
 
   Future<void> _refreshAdminFarms() async {
@@ -124,9 +134,8 @@ class _MainShellScreenState extends State<MainShellScreen> {
           : farms.first;
       setState(() {
         _session = _session.copyWith(farms: farms, selectedFarm: selected);
-        _connectivityLinkService.updateSession(_session);
-        _waterQualityService.updateSession(_session);
       });
+      _applySessionToServices();
     } catch (_) {
       // Giữ danh sách từ /api/auth/me nếu refresh thất bại.
     }
@@ -138,15 +147,21 @@ class _MainShellScreenState extends State<MainShellScreen> {
     super.dispose();
   }
 
-  void _onConnectivityUpdate() => setState(() {});
+  void _onConnectivityUpdate() {
+    if (!mounted) return;
+    setState(() {});
+  }
 
   void _onFarmChanged(FarmSummary farm) {
     if (farm.id == _session.selectedFarm.id) return;
     setState(() {
       _session = _session.copyWith(selectedFarm: farm);
-      _connectivityLinkService.updateSession(_session);
-      _waterQualityService.updateSession(_session);
     });
+    _connectivityLinkService.updateSession(_session);
+    _waterQualityService.updateSession(_session);
+    if (_route == AppRoute.productionManagement) {
+      _productionManagementService.loadAreas();
+    }
     _connectivityLinkService.refreshCloud();
     _waterQualityService.refreshTrend(quiet: true);
   }
@@ -190,6 +205,9 @@ class _MainShellScreenState extends State<MainShellScreen> {
         _selectedCrabId = null;
       }
     });
+    if (route == AppRoute.productionManagement) {
+      _productionManagementService.loadAreas();
+    }
   }
 
   void _openBatchDetail(CrabBatch batch) {
@@ -372,6 +390,14 @@ class _MainShellScreenState extends State<MainShellScreen> {
       );
     }
 
+    if (_route == AppRoute.productionManagement) {
+      return _shellTopBar(
+        searchHint: 'Tìm mã khu, dãy, hộp, đợt, cua...',
+        onSearchChanged: _productionManagementService.setSearch,
+        centerTitle: const SizedBox.shrink(),
+      );
+    }
+
     if (_route == AppRoute.cameraAi) {
       return _shellTopBar(
         searchHint: 'Tìm kiếm cá thể, thiết bị hoặc khu nuôi...',
@@ -481,6 +507,10 @@ class _MainShellScreenState extends State<MainShellScreen> {
         return FarmManagementPage(
           service: _farmManagementService,
           onFarmsChanged: _syncSessionFarmsFromRecords,
+        );
+      case AppRoute.productionManagement:
+        return ProductionManagementPage(
+          service: _productionManagementService,
         );
       case AppRoute.individuals:
         return CrabListPage(

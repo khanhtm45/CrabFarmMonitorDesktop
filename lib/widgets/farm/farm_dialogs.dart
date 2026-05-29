@@ -14,14 +14,17 @@ Future<void> showCreateFarmDialog(
     previewCode = await service.fetchNextCode();
   } catch (_) {}
 
-  await _showFarmFormDialog(
+  await showDialog<void>(
     context: context,
-    title: 'Thêm trại mới',
-    autoCode: previewCode,
-    onSubmit: (name, address, description) => service.create(
-      name: name,
-      address: address,
-      description: description,
+    builder: (ctx) => _FarmFormDialog(
+      title: 'Thêm trại mới',
+      autoCode: previewCode,
+      isCreate: true,
+      onSubmit: (name, address, description) => service.create(
+        name: name,
+        address: address,
+        description: description,
+      ),
     ),
   );
 }
@@ -31,18 +34,21 @@ Future<void> showEditFarmDialog(
   FarmManagementService service,
   FarmRecord farm,
 ) async {
-  await _showFarmFormDialog(
+  await showDialog<void>(
     context: context,
-    title: 'Sửa trại',
-    autoCode: farm.code,
-    initialName: farm.name,
-    initialAddress: farm.address,
-    initialDescription: farm.description,
-    onSubmit: (name, address, description) => service.update(
-      farm,
-      name: name,
-      address: address,
-      description: description,
+    builder: (ctx) => _FarmFormDialog(
+      title: 'Sửa trại',
+      autoCode: farm.code,
+      isCreate: false,
+      initialName: farm.name,
+      initialAddress: farm.address,
+      initialDescription: farm.description,
+      onSubmit: (name, address, description) => service.update(
+        farm,
+        name: name,
+        address: address,
+        description: description,
+      ),
     ),
   );
 }
@@ -95,112 +101,130 @@ Future<void> showDeleteFarmDialog(
   }
 }
 
-Future<void> _showFarmFormDialog({
-  required BuildContext context,
-  required String title,
-  required Future<dynamic> Function(
+class _FarmFormDialog extends StatefulWidget {
+  const _FarmFormDialog({
+    required this.title,
+    required this.autoCode,
+    required this.isCreate,
+    required this.onSubmit,
+    this.initialName,
+    this.initialAddress,
+    this.initialDescription,
+  });
+
+  final String title;
+  final String autoCode;
+  final bool isCreate;
+  final String? initialName;
+  final String? initialAddress;
+  final String? initialDescription;
+  final Future<dynamic> Function(
     String name,
     String? address,
     String? description,
-  ) onSubmit,
-  required String autoCode,
-  String? initialName,
-  String? initialAddress,
-  String? initialDescription,
-}) async {
-  final formKey = GlobalKey<FormState>();
-  final nameCtrl = TextEditingController(text: initialName ?? '');
-  final addressCtrl = TextEditingController(text: initialAddress ?? '');
-  final descCtrl = TextEditingController(text: initialDescription ?? '');
-  var saving = false;
-  final isCreate = initialName == null;
+  ) onSubmit;
 
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setDialog) => AlertDialog(
-        backgroundColor: DashboardColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          title,
-          style: GoogleFonts.notoSans(color: DashboardColors.textPrimary),
+  @override
+  State<_FarmFormDialog> createState() => _FarmFormDialogState();
+}
+
+class _FarmFormDialogState extends State<_FarmFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _addressCtrl;
+  late final TextEditingController _descCtrl;
+  var _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.initialName ?? '');
+    _addressCtrl = TextEditingController(text: widget.initialAddress ?? '');
+    _descCtrl = TextEditingController(text: widget.initialDescription ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _addressCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    try {
+      await widget.onSubmit(
+        _nameCtrl.text.trim(),
+        _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
+        _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.isCreate ? 'Đã thêm trại' : 'Đã cập nhật trại',
+          ),
         ),
-        content: SizedBox(
-          width: 480,
-          child: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _autoCodeBanner(autoCode, isCreate: isCreate),
-                  _field(nameCtrl, 'Tên trại *', required: true),
-                  _field(addressCtrl, 'Địa chỉ', maxLines: 2),
-                  _field(descCtrl, 'Mô tả', maxLines: 3),
-                ],
-              ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
+      setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: DashboardColors.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        widget.title,
+        style: GoogleFonts.notoSans(color: DashboardColors.textPrimary),
+      ),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _autoCodeBanner(widget.autoCode, isCreate: widget.isCreate),
+                _field(_nameCtrl, 'Tên trại *', required: true),
+                _field(_addressCtrl, 'Địa chỉ', maxLines: 2),
+                _field(_descCtrl, 'Mô tả', maxLines: 3),
+              ],
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: saving ? null : () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: saving
-                ? null
-                : () async {
-                    if (!formKey.currentState!.validate()) return;
-                    setDialog(() => saving = true);
-                    try {
-                      await onSubmit(
-                        nameCtrl.text.trim(),
-                        addressCtrl.text.trim().isEmpty
-                            ? null
-                            : addressCtrl.text.trim(),
-                        descCtrl.text.trim().isEmpty
-                            ? null
-                            : descCtrl.text.trim(),
-                      );
-                      if (ctx.mounted) Navigator.pop(ctx);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              isCreate ? 'Đã thêm trại' : 'Đã cập nhật trại',
-                            ),
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(content: Text('$e')),
-                        );
-                      }
-                    } finally {
-                      if (ctx.mounted) setDialog(() => saving = false);
-                    }
-                  },
-            style: FilledButton.styleFrom(backgroundColor: DashboardColors.purple),
-            child: saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Lưu'),
-          ),
-        ],
       ),
-    ),
-  );
-
-  nameCtrl.dispose();
-  addressCtrl.dispose();
-  descCtrl.dispose();
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          style: FilledButton.styleFrom(backgroundColor: DashboardColors.purple),
+          child: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Lưu'),
+        ),
+      ],
+    );
+  }
 }
 
 Widget _autoCodeBanner(String code, {required bool isCreate}) {

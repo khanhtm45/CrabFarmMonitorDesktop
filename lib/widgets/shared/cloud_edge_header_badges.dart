@@ -26,7 +26,9 @@ class CloudEdgeHeaderBadges extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return ListenableBuilder(
+      listenable: service,
+      builder: (context, _) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _Badge(
@@ -43,6 +45,7 @@ class CloudEdgeHeaderBadges extends StatelessWidget {
           ),
         ],
       ],
+    ),
     );
   }
 }
