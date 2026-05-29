@@ -83,7 +83,10 @@ class ProductionManagementService extends ChangeNotifier {
     batches = [];
     crabs = [];
     notifyListeners();
-    if (id != null) loadBoxes();
+    if (id != null) {
+      loadBoxes();
+      loadBatches();
+    }
   }
 
   void selectBox(String? id) {
@@ -163,8 +166,8 @@ class ProductionManagementService extends ChangeNotifier {
         if (selectedAreaId != null) return loadRows();
         return loadAreas();
       case ProductionTab.batch:
-        if (selectedBoxId != null) return loadBatches();
-        if (selectedRowId != null) return loadBoxes();
+        if (selectedRowId != null) return loadBatches();
+        if (selectedAreaId != null) return loadRows();
         return loadAreas();
       case ProductionTab.crab:
         if (selectedBatchId != null) return loadCrabs();
@@ -239,13 +242,13 @@ class ProductionManagementService extends ChangeNotifier {
   }
 
   Future<void> loadBatches() async {
-    final boxId = selectedBoxId;
-    if (boxId == null) return;
+    final rowId = selectedRowId;
+    if (rowId == null) return;
     loading = true;
     error = null;
     notifyListeners();
     try {
-      batches = await _api.fetchBatches(token, boxId);
+      batches = await _api.fetchBatchesByRow(token, rowId);
       if (selectedBatchId != null &&
           !batches.any((b) => b.id == selectedBatchId)) {
         selectedBatchId = batches.isNotEmpty ? batches.first.id : null;
@@ -411,39 +414,68 @@ class ProductionManagementService extends ChangeNotifier {
   }
 
   // ── Batch CRUD ──
-  Future<FarmingBatchRecord> createBatch({
+  Future<List<FarmingBatchRecord>> createBatches({
+    required List<String> boxIds,
     required DateTime startDate,
-    DateTime? expectedHarvestDate,
+    required DateTime expectedHarvestDate,
     int initialQuantity = 0,
+    bool startNow = true,
     String status = 'active',
   }) async {
-    final b = await _api.createBatch(token, selectedBoxId!,
-        startDate: startDate,
-        expectedHarvestDate: expectedHarvestDate,
-        initialQuantity: initialQuantity,
-        status: status);
-    batches = [...batches, b];
+    final rowId = selectedRowId!;
+    final created = boxIds.length <= 1 && boxIds.isNotEmpty
+        ? [
+            await _api.createBatch(
+              token,
+              boxIds.first,
+              startDate: startDate,
+              expectedHarvestDate: expectedHarvestDate,
+              initialQuantity: initialQuantity,
+              status: status,
+              startNow: startNow,
+            )
+          ]
+        : await _api.createBatchesBulk(
+            token,
+            rowId,
+            boxIds: boxIds,
+            startDate: startDate,
+            expectedHarvestDate: expectedHarvestDate,
+            initialQuantity: initialQuantity,
+            startNow: startNow,
+            status: status,
+          );
+    batches = [...batches, ...created]
+      ..sort((a, b) => b.startDate.compareTo(a.startDate));
+    await loadBoxes();
     notifyListeners();
-    return b;
+    return created;
   }
 
-  Future<FarmingBatchRecord> updateBatch(FarmingBatchRecord item,
-      {required String batchCode,
-      required DateTime startDate,
-      DateTime? expectedHarvestDate,
-      DateTime? actualHarvestDate,
-      required int initialQuantity,
-      required int currentQuantity,
-      required String status}) async {
-    final b = await _api.updateBatch(token, item.id,
-        batchCode: batchCode,
-        startDate: startDate,
-        expectedHarvestDate: expectedHarvestDate,
-        actualHarvestDate: actualHarvestDate,
-        initialQuantity: initialQuantity,
-        currentQuantity: currentQuantity,
-        status: status);
+  Future<FarmingBatchRecord> updateBatch(
+    FarmingBatchRecord item, {
+    required DateTime startDate,
+    required DateTime expectedHarvestDate,
+    DateTime? actualHarvestDate,
+    required int initialQuantity,
+    required int currentQuantity,
+    required String status,
+    bool startNow = false,
+  }) async {
+    final b = await _api.updateBatch(
+      token,
+      item.id,
+      batchCode: item.batchCode,
+      startDate: startDate,
+      expectedHarvestDate: expectedHarvestDate,
+      actualHarvestDate: actualHarvestDate,
+      initialQuantity: initialQuantity,
+      currentQuantity: currentQuantity,
+      status: status,
+      startNow: startNow,
+    );
     batches = batches.map((x) => x.id == b.id ? b : x).toList();
+    await loadBoxes();
     notifyListeners();
     return b;
   }

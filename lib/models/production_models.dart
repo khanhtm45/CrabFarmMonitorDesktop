@@ -83,11 +83,13 @@ class FarmingBatchRecord {
     required this.initialQuantity,
     required this.currentQuantity,
     required this.status,
+    this.boxCode,
   });
 
   final String id;
   final String boxId;
   final String batchCode;
+  final String? boxCode;
   final DateTime startDate;
   final DateTime? expectedHarvestDate;
   final DateTime? actualHarvestDate;
@@ -106,6 +108,7 @@ class FarmingBatchRecord {
       FarmingBatchRecord(
         id: (json['id'] ?? json['Id']).toString(),
         boxId: (json['boxId'] ?? json['BoxId']).toString(),
+        boxCode: (json['boxCode'] ?? json['BoxCode'])?.toString(),
         batchCode: (json['batchCode'] ?? json['BatchCode'] ?? '').toString(),
         startDate: _parseDate(json['startDate'] ?? json['StartDate']) ??
             DateTime.now(),

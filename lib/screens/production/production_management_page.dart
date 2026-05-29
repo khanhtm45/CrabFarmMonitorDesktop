@@ -434,21 +434,13 @@ class _BatchTab extends StatelessWidget {
             itemLabel: (r) => '${r.rowCode} — ${r.rowName}',
             onChanged: (id) {
               svc.selectRow(id);
-              if (id != null) svc.loadBoxes();
             },
-          ),
-          _ParentDropdown<BoxRecord>(
-            label: 'Hộp nuôi',
-            value: svc.selectedBoxId,
-            items: svc.boxes,
-            itemLabel: (b) => b.boxCode,
-            onChanged: svc.selectBox,
           ),
           _Toolbar(
             svc: svc,
-            canAdd: svc.selectedBoxId != null,
-            addLabel: 'Thêm đợt',
-            onAdd: svc.selectedBoxId == null
+            canAdd: svc.selectedRowId != null && svc.boxes.isNotEmpty,
+            addLabel: 'Thêm đợt (nhiều hộp)',
+            onAdd: svc.selectedRowId == null || svc.boxes.isEmpty
                 ? null
                 : () => showBatchFormDialog(context, svc),
           ),
@@ -456,14 +448,16 @@ class _BatchTab extends StatelessWidget {
       ),
       child: _DataTableWrapper(
         loading: svc.loading,
-        empty: svc.selectedBoxId == null || items.isEmpty,
-        emptyMessage: svc.selectedBoxId == null
-            ? 'Chọn hộp để xem đợt nuôi.'
-            : 'Chưa có đợt.',
+        empty: svc.selectedRowId == null || items.isEmpty,
+        emptyMessage: svc.selectedRowId == null
+            ? 'Chọn dãy để xem đợt nuôi.'
+            : 'Chưa có đợt — thêm hộp trước nếu cần.',
         table: DataTable(
           columns: const [
             DataColumn(label: Text('Mã đợt')),
+            DataColumn(label: Text('Hộp')),
             DataColumn(label: Text('Bắt đầu')),
+            DataColumn(label: Text('Kết thúc DK')),
             DataColumn(label: Text('SL')),
             DataColumn(label: Text('TT')),
             DataColumn(label: Text('')),
@@ -471,9 +465,15 @@ class _BatchTab extends StatelessWidget {
           rows: items.map((b) {
             return DataRow(cells: [
               DataCell(Text(b.batchCode)),
+              DataCell(Text(b.boxCode ?? '—')),
               DataCell(Text(_fmt(b.startDate))),
+              DataCell(Text(
+                b.expectedHarvestDate == null
+                    ? '—'
+                    : _fmt(b.expectedHarvestDate!),
+              )),
               DataCell(Text('${b.currentQuantity}/${b.initialQuantity}')),
-              DataCell(Text(b.status)),
+              DataCell(Text(_batchStatusLabel(b.status))),
               DataCell(_rowActions(
                 onEdit: () => showBatchFormDialog(context, svc, existing: b),
                 onDelete: () async {
@@ -499,6 +499,13 @@ class _BatchTab extends StatelessWidget {
 
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  static String _batchStatusLabel(String status) => switch (status) {
+        'active' => 'Đang nuôi',
+        'harvested' => 'Đã thu hoạch',
+        'failed' => 'Thất bại',
+        _ => status,
+      };
 }
 
 class _CrabTab extends StatelessWidget {

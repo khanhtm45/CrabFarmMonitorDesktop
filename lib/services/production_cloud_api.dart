@@ -219,6 +219,41 @@ extension ProductionCloudApi on CloudApiClient {
     return _parseList(res, 'batches', FarmingBatchRecord.fromJson);
   }
 
+  Future<List<FarmingBatchRecord>> fetchBatchesByRow(
+    String token,
+    String rowId,
+  ) async {
+    final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/rows/$rowId/batches');
+    final res = await _client.get(uri, headers: authHeaders(token));
+    return _parseList(res, 'batches', FarmingBatchRecord.fromJson);
+  }
+
+  Future<List<FarmingBatchRecord>> createBatchesBulk(
+    String token,
+    String rowId, {
+    required List<String> boxIds,
+    required DateTime startDate,
+    required DateTime expectedHarvestDate,
+    int initialQuantity = 0,
+    bool startNow = true,
+    String status = 'active',
+  }) async {
+    final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/rows/$rowId/batches/bulk');
+    final res = await _client.post(
+      uri,
+      headers: {...authHeaders(token), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'boxIds': boxIds,
+        'startDate': _dateOnly(startDate),
+        'expectedHarvestDate': _dateOnly(expectedHarvestDate),
+        'initialQuantity': initialQuantity,
+        'startNow': startNow,
+        'status': status,
+      }),
+    );
+    return _parseList(res, 'batches', FarmingBatchRecord.fromJson);
+  }
+
   Future<FarmingBatchRecord> createBatch(
     String token,
     String boxId, {
@@ -228,6 +263,7 @@ extension ProductionCloudApi on CloudApiClient {
     int initialQuantity = 0,
     int currentQuantity = 0,
     String status = 'active',
+    bool startNow = false,
   }) async {
     final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/boxes/$boxId/batches');
     final res = await _client.post(
@@ -240,6 +276,7 @@ extension ProductionCloudApi on CloudApiClient {
         'initialQuantity': initialQuantity,
         'currentQuantity': currentQuantity > 0 ? currentQuantity : initialQuantity,
         'status': status,
+        'startNow': startNow,
       }),
     );
     return _parseSingle(res, 'batch', FarmingBatchRecord.fromJson);
@@ -255,6 +292,7 @@ extension ProductionCloudApi on CloudApiClient {
     required int initialQuantity,
     required int currentQuantity,
     required String status,
+    bool startNow = false,
   }) async {
     final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/farming-batches/$batchId');
     final res = await _client.put(
@@ -268,6 +306,7 @@ extension ProductionCloudApi on CloudApiClient {
         'initialQuantity': initialQuantity,
         'currentQuantity': currentQuantity,
         'status': status,
+        'startNow': startNow,
       }),
     );
     return _parseSingle(res, 'batch', FarmingBatchRecord.fromJson);

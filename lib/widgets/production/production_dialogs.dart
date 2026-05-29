@@ -73,18 +73,12 @@ Future<void> showBatchFormDialog(
   ProductionManagementService svc, {
   FarmingBatchRecord? existing,
 }) async {
-  var preview = 'BT-…';
-  if (existing == null && svc.selectedBoxId != null) {
-    try {
-      preview = await svc.fetchNextBatchCode();
-    } catch (_) {}
-  }
   await showDialog<void>(
     context: context,
     builder: (_) => _BatchFormDialog(
       svc: svc,
       existing: existing,
-      autoCode: existing?.batchCode ?? preview,
+      autoCode: existing?.batchCode ?? 'BT-… (mỗi hộp)',
     ),
   );
 }
@@ -460,11 +454,19 @@ class _BatchFormDialogState extends State<_BatchFormDialog> {
   late final TextEditingController _qty;
   late final TextEditingController _cur;
   late DateTime _start;
-  DateTime? _expected;
+  late DateTime _expected;
+  DateTime? _actual;
   late String _status;
+  var _startNow = true;
   var _saving = false;
+  late Set<String> _selectedBoxIds;
 
   static const _statuses = ['active', 'harvested', 'failed'];
+  static const _statusLabels = {
+    'active': 'Đang nuôi (active)',
+    'harvested': 'Đã thu hoạch',
+    'failed': 'Thất bại',
+  };
 
   @override
   void initState() {
@@ -472,9 +474,19 @@ class _BatchFormDialogState extends State<_BatchFormDialog> {
     final e = widget.existing;
     _qty = TextEditingController(text: '${e?.initialQuantity ?? 0}');
     _cur = TextEditingController(text: '${e?.currentQuantity ?? 0}');
-    _start = e?.startDate ?? DateTime.now();
-    _expected = e?.expectedHarvestDate;
+    final today = DateTime.now();
+    _start = e?.startDate ?? DateTime(today.year, today.month, today.day);
+    _expected = e?.expectedHarvestDate ??
+        DateTime(today.year, today.month, today.day).add(const Duration(days: 60));
+    _actual = e?.actualHarvestDate;
     _status = e?.status ?? 'active';
+    _startNow = e == null;
+    _selectedBoxIds = e != null
+        ? {e.boxId}
+        : widget.svc.boxes
+            .where((b) => b.status == 'empty')
+            .map((b) => b.id)
+            .toSet();
   }
 
   @override
@@ -484,8 +496,12 @@ class _BatchFormDialogState extends State<_BatchFormDialog> {
     super.dispose();
   }
 
-  Future<void> _pickDate(bool start) async {
-    final initial = start ? _start : (_expected ?? DateTime.now());
+  Future<void> _pickDate(_BatchDateField field) async {
+    final initial = switch (field) {
+      _BatchDateField.start => _start,
+      _BatchDateField.expected => _expected,
+      _BatchDateField.actual => _actual ?? DateTime.now(),
+    };
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -494,36 +510,74 @@ class _BatchFormDialogState extends State<_BatchFormDialog> {
     );
     if (picked == null) return;
     setState(() {
-      if (start) {
-        _start = picked;
-      } else {
-        _expected = picked;
+      switch (field) {
+        case _BatchDateField.start:
+          _start = picked;
+          if (_expected.isBefore(_start)) {
+            _expected = _start.add(const Duration(days: 30));
+          }
+        case _BatchDateField.expected:
+          _expected = picked;
+        case _BatchDateField.actual:
+          _actual = picked;
       }
     });
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (widget.isCreate && _selectedBoxIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chọn ít nhất một hộp nuôi')),
+      );
+      return;
+    }
+    if (_expected.isBefore(_start)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ngày kết thúc phải sau ngày bắt đầu')),
+      );
+      return;
+    }
     setState(() => _saving = true);
     final iq = int.tryParse(_qty.text.trim()) ?? 0;
     final cq = int.tryParse(_cur.text.trim()) ?? iq;
+    final startNow = widget.isCreate
+        ? _startNow
+        : (_status == 'active' && _startNow);
     try {
       if (widget.isCreate) {
-        await widget.svc.createBatch(
+        final created = await widget.svc.createBatches(
+          boxIds: _selectedBoxIds.toList(),
           startDate: _start,
           expectedHarvestDate: _expected,
           initialQuantity: iq,
+          startNow: startNow,
           status: _status,
         );
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.pop(context);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              created.length == 1
+                  ? 'Đã tạo đợt ${created.first.batchCode} — hộp ${created.first.boxCode ?? ''}'
+                  : 'Đã tạo ${created.length} đợt nuôi',
+            ),
+          ),
+        );
+        return;
       } else {
-        await widget.svc.updateBatch(widget.existing!,
-            batchCode: widget.existing!.batchCode,
-            startDate: _start,
-            expectedHarvestDate: _expected,
-            actualHarvestDate: widget.existing!.actualHarvestDate,
-            initialQuantity: iq,
-            currentQuantity: cq,
-            status: _status);
+        await widget.svc.updateBatch(
+          widget.existing!,
+          startDate: _start,
+          expectedHarvestDate: _expected,
+          actualHarvestDate: _actual,
+          initialQuantity: iq,
+          currentQuantity: cq,
+          status: _status,
+          startNow: startNow,
+        );
       }
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
@@ -543,29 +597,92 @@ class _BatchFormDialogState extends State<_BatchFormDialog> {
       title: Text(widget.isCreate ? 'Thêm đợt nuôi' : 'Sửa đợt nuôi',
           style: GoogleFonts.notoSans(color: DashboardColors.textPrimary)),
       content: SizedBox(
-        width: 440,
+        width: 480,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _codeBanner(widget.autoCode, isCreate: widget.isCreate, label: 'đợt'),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Ngày bắt đầu', style: GoogleFonts.notoSans(color: DashboardColors.textMuted, fontSize: 12)),
-                  subtitle: Text(_fmt(_start), style: GoogleFonts.notoSans(color: DashboardColors.textPrimary)),
-                  trailing: IconButton(icon: const Icon(Icons.calendar_today), onPressed: () => _pickDate(true)),
+                if (widget.isCreate) ...[
+                  Text(
+                    'Chọn hộp nuôi (${_selectedBoxIds.length}/${widget.svc.boxes.length})',
+                    style: GoogleFonts.notoSans(
+                      color: DashboardColors.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 160),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: widget.svc.boxes.map((box) {
+                        final checked = _selectedBoxIds.contains(box.id);
+                        return CheckboxListTile(
+                          dense: true,
+                          value: checked,
+                          title: Text(
+                            '${box.boxCode} (${box.status})',
+                            style: GoogleFonts.notoSans(
+                              color: DashboardColors.textPrimary,
+                              fontSize: 13,
+                            ),
+                          ),
+                          onChanged: (v) {
+                            setState(() {
+                              if (v == true) {
+                                _selectedBoxIds.add(box.id);
+                              } else {
+                                _selectedBoxIds.remove(box.id);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _dateTile('Ngày bắt đầu *', _start, () => _pickDate(_BatchDateField.start)),
+                _dateTile(
+                  'Ngày kết thúc (dự kiến thu hoạch) *',
+                  _expected,
+                  () => _pickDate(_BatchDateField.expected),
                 ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Dự kiến thu hoạch', style: GoogleFonts.notoSans(color: DashboardColors.textMuted, fontSize: 12)),
-                  subtitle: Text(_expected == null ? '—' : _fmt(_expected!), style: GoogleFonts.notoSans(color: DashboardColors.textPrimary)),
-                  trailing: IconButton(icon: const Icon(Icons.event), onPressed: () => _pickDate(false)),
-                ),
+                if (!widget.isCreate)
+                  _dateTile(
+                    'Ngày thu hoạch thực tế',
+                    _actual,
+                    () => _pickDate(_BatchDateField.actual),
+                    optional: true,
+                  ),
                 _tf(_qty, 'Số lượng ban đầu *', required: true),
                 if (!widget.isCreate) _tf(_cur, 'Số lượng hiện tại *', required: true),
-                _dropdown('Trạng thái', _status, _statuses, (v) => setState(() => _status = v)),
+                _statusDropdown(),
+                if (widget.isCreate || _status == 'active')
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Bắt đầu nuôi ngay',
+                      style: GoogleFonts.notoSans(
+                        color: DashboardColors.textPrimary,
+                        fontSize: 13,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Gán ngày bắt đầu và chuyển hộp sang trạng thái farming',
+                      style: GoogleFonts.notoSans(
+                        color: DashboardColors.textMuted,
+                        fontSize: 11,
+                      ),
+                    ),
+                    value: _startNow,
+                    onChanged: (v) => setState(() => _startNow = v),
+                  ),
               ],
             ),
           ),
@@ -575,9 +692,63 @@ class _BatchFormDialogState extends State<_BatchFormDialog> {
     );
   }
 
+  Widget _statusDropdown() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        value: _status,
+        dropdownColor: DashboardColors.card,
+        style: GoogleFonts.notoSans(color: DashboardColors.textPrimary),
+        decoration: InputDecoration(
+          labelText: 'Trạng thái',
+          labelStyle: GoogleFonts.notoSans(color: DashboardColors.textMuted),
+          filled: true,
+          fillColor: DashboardColors.darkNavy.withValues(alpha: 0.4),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: DashboardColors.cardBorder),
+          ),
+        ),
+        items: _statuses
+            .map(
+              (s) => DropdownMenuItem(
+                value: s,
+                child: Text(_statusLabels[s] ?? s),
+              ),
+            )
+            .toList(),
+        onChanged: (v) {
+          if (v != null) setState(() => _status = v);
+        },
+      ),
+    );
+  }
+
+  Widget _dateTile(
+    String label,
+    DateTime? date,
+    VoidCallback onPick, {
+    bool optional = false,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        label,
+        style: GoogleFonts.notoSans(color: DashboardColors.textMuted, fontSize: 12),
+      ),
+      subtitle: Text(
+        date == null ? (optional ? '—' : 'Chưa chọn') : _fmt(date),
+        style: GoogleFonts.notoSans(color: DashboardColors.textPrimary),
+      ),
+      trailing: IconButton(icon: const Icon(Icons.calendar_today), onPressed: onPick),
+    );
+  }
+
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
+
+enum _BatchDateField { start, expected, actual }
 
 class _CrabFormDialog extends StatefulWidget {
   const _CrabFormDialog({
