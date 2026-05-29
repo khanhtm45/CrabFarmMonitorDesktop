@@ -318,6 +318,7 @@ class _BoxFormDialog extends StatefulWidget {
 
 class _BoxFormDialogState extends State<_BoxFormDialog> {
   final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _count;
   late final TextEditingController _pos;
   late final TextEditingController _vol;
   late String _status;
@@ -329,6 +330,7 @@ class _BoxFormDialogState extends State<_BoxFormDialog> {
   void initState() {
     super.initState();
     final e = widget.existing;
+    _count = TextEditingController(text: '1');
     _pos = TextEditingController(text: e?.position ?? '');
     _vol = TextEditingController(text: e?.volume?.toString() ?? '');
     _status = e?.status ?? 'empty';
@@ -336,6 +338,7 @@ class _BoxFormDialogState extends State<_BoxFormDialog> {
 
   @override
   void dispose() {
+    _count.dispose();
     _pos.dispose();
     _vol.dispose();
     super.dispose();
@@ -345,13 +348,29 @@ class _BoxFormDialogState extends State<_BoxFormDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     final vol = double.tryParse(_vol.text.trim());
+    final posPrefix = _pos.text.trim().isEmpty ? null : _pos.text.trim();
     try {
       if (widget.isCreate) {
-        await widget.svc.createBox(
-          position: _pos.text.trim().isEmpty ? null : _pos.text.trim(),
+        final qty = int.tryParse(_count.text.trim()) ?? 1;
+        final created = await widget.svc.createBoxes(
+          count: qty,
+          positionPrefix: posPrefix,
           volume: vol,
           status: _status,
         );
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.pop(context);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              created.length == 1
+                  ? 'Đã thêm hộp ${created.first.boxCode}'
+                  : 'Đã thêm ${created.length} hộp (${created.first.boxCode} … ${created.last.boxCode})',
+            ),
+          ),
+        );
+        return;
       } else {
         await widget.svc.updateBox(widget.existing!,
             boxCode: widget.existing!.boxCode,
@@ -362,7 +381,7 @@ class _BoxFormDialogState extends State<_BoxFormDialog> {
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-      messenger.showSnackBar(const SnackBar(content: Text('Đã lưu hộp')));
+      messenger.showSnackBar(const SnackBar(content: Text('Đã cập nhật hộp')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -372,6 +391,8 @@ class _BoxFormDialogState extends State<_BoxFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final qty = int.tryParse(_count.text.trim()) ?? 1;
+    final multi = widget.isCreate && qty > 1;
     return AlertDialog(
       backgroundColor: DashboardColors.card,
       title: Text(widget.isCreate ? 'Thêm hộp nuôi' : 'Sửa hộp nuôi',
@@ -383,9 +404,31 @@ class _BoxFormDialogState extends State<_BoxFormDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _codeBanner(widget.autoCode, isCreate: widget.isCreate, label: 'hộp'),
-              _tf(_pos, 'Vị trí'),
-              _tf(_vol, 'Thể tích (L)'),
+              _codeBanner(
+                multi
+                    ? '${widget.autoCode} … (×$qty hộp, mã H-n tự tăng)'
+                    : widget.autoCode,
+                isCreate: widget.isCreate,
+                label: 'hộp',
+              ),
+              if (widget.isCreate)
+                _tf(
+                  _count,
+                  'Số lượng hộp *',
+                  required: true,
+                  keyboardType: TextInputType.number,
+                  validator: (v) {
+                    final n = int.tryParse((v ?? '').trim());
+                    if (n == null || n < 1) return 'Tối thiểu 1';
+                    if (n > 100) return 'Tối đa 100';
+                    return null;
+                  },
+                ),
+              _tf(
+                _pos,
+                multi ? 'Tiền tố vị trí (tùy chọn, VD: A → A-1, A-2…)' : 'Vị trí',
+              ),
+              _tf(_vol, 'Thể tích mỗi hộp (L)'),
               _dropdown('Trạng thái', _status, _statuses, (v) => setState(() => _status = v)),
             ],
           ),
@@ -690,14 +733,25 @@ List<Widget> _dialogActions(BuildContext context, bool saving, VoidCallback onSa
       ),
     ];
 
-Widget _tf(TextEditingController c, String label, {bool required = false, int maxLines = 1}) {
+Widget _tf(
+  TextEditingController c,
+  String label, {
+  bool required = false,
+  int maxLines = 1,
+  TextInputType? keyboardType,
+  String? Function(String?)? validator,
+}) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: TextFormField(
       controller: c,
       maxLines: maxLines,
+      keyboardType: keyboardType,
       style: GoogleFonts.notoSans(color: DashboardColors.textPrimary),
-      validator: required ? (v) => (v == null || v.trim().isEmpty) ? 'Bắt buộc' : null : null,
+      validator: validator ??
+          (required
+              ? (v) => (v == null || v.trim().isEmpty) ? 'Bắt buộc' : null
+              : null),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.notoSans(color: DashboardColors.textMuted),

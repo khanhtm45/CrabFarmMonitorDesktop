@@ -357,11 +357,37 @@ class ProductionManagementService extends ChangeNotifier {
     double? volume,
     String status = 'empty',
   }) async {
-    final r = await _api.createBox(token, selectedRowId!,
-        position: position, volume: volume, status: status);
-    boxes = [...boxes, r]..sort((x, y) => x.boxCode.compareTo(y.boxCode));
+    final list = await createBoxes(
+      count: 1,
+      positionPrefix: position,
+      volume: volume,
+      status: status,
+    );
+    return list.first;
+  }
+
+  Future<List<BoxRecord>> createBoxes({
+    required int count,
+    String? positionPrefix,
+    double? volume,
+    String status = 'empty',
+  }) async {
+    final rowId = selectedRowId!;
+    final List<BoxRecord> created;
+    if (count <= 1) {
+      final one = await _api.createBox(token, rowId,
+          position: positionPrefix, volume: volume, status: status);
+      created = [one];
+    } else {
+      created = await _api.createBoxesBulk(token, rowId,
+          count: count,
+          positionPrefix: positionPrefix,
+          volume: volume,
+          status: status);
+    }
+    boxes = [...boxes, ...created]..sort((x, y) => x.boxCode.compareTo(y.boxCode));
     notifyListeners();
-    return r;
+    return created;
   }
 
   Future<BoxRecord> updateBox(BoxRecord item,

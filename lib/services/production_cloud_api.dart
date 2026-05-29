@@ -162,6 +162,29 @@ extension ProductionCloudApi on CloudApiClient {
     return _parseSingle(res, 'box', BoxRecord.fromJson);
   }
 
+  Future<List<BoxRecord>> createBoxesBulk(
+    String token,
+    String rowId, {
+    required int count,
+    String? positionPrefix,
+    double? volume,
+    String status = 'empty',
+  }) async {
+    final uri = Uri.parse('${AppEnv.cloudApiUrl}/api/rows/$rowId/boxes/bulk');
+    final res = await _client.post(
+      uri,
+      headers: {...authHeaders(token), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'count': count,
+        if (positionPrefix != null && positionPrefix.isNotEmpty)
+          'positionPrefix': positionPrefix,
+        if (volume != null) 'volume': volume,
+        'status': status,
+      }),
+    );
+    return _parseList(res, 'boxes', BoxRecord.fromJson);
+  }
+
   Future<BoxRecord> updateBox(
     String token,
     String boxId, {

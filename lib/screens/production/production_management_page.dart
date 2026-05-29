@@ -357,7 +357,7 @@ class _BoxTab extends StatelessWidget {
           _Toolbar(
             svc: svc,
             canAdd: svc.selectedRowId != null,
-            addLabel: 'Thêm hộp',
+            addLabel: 'Thêm hộp (1 hoặc nhiều)',
             onAdd: svc.selectedRowId == null
                 ? null
                 : () => showBoxFormDialog(context, svc),
