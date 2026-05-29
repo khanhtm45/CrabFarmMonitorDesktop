@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../models/auth_models.dart';
 import '../../services/connectivity_link_service.dart';
 import '../../theme/dashboard_theme.dart';
 import 'cloud_edge_header_badges.dart';
+import 'farm_header_selector.dart';
 import 'theme_mode_toggle.dart';
 
 class AppTopBar extends StatelessWidget {
@@ -20,6 +22,9 @@ class AppTopBar extends StatelessWidget {
     this.connectivity,
     this.onOpenDeviceSetup,
     this.onLogout,
+    this.farms,
+    this.selectedFarm,
+    this.onFarmChanged,
   });
 
   final String? title;
@@ -33,6 +38,9 @@ class AppTopBar extends StatelessWidget {
   final ConnectivityLinkService? connectivity;
   final VoidCallback? onOpenDeviceSetup;
   final VoidCallback? onLogout;
+  final List<FarmSummary>? farms;
+  final FarmSummary? selectedFarm;
+  final ValueChanged<FarmSummary>? onFarmChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +102,14 @@ class AppTopBar extends StatelessWidget {
                 ),
           ),
           const Spacer(),
+          if (selectedFarm != null && farms != null && farms!.isNotEmpty) ...[
+            FarmHeaderSelector(
+              farms: farms!,
+              selected: selectedFarm!,
+              onChanged: onFarmChanged ?? (_) {},
+            ),
+            const SizedBox(width: 12),
+          ],
           if (connectivity != null) ...[
             CloudEdgeHeaderBadges(
               service: connectivity!,

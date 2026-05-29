@@ -315,6 +315,17 @@ class _FarmSelectCard extends StatelessWidget {
             color: DashboardColors.textMuted,
           ),
         ),
+        if (payload.canViewAllFarms) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Quyền admin: xem và chuyển giữa ${payload.farms.length} trại trong tổ chức.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.notoSans(
+              fontSize: 12,
+              color: DashboardColors.cyan.withValues(alpha: 0.95),
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         Container(
           width: double.infinity,

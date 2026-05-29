@@ -63,6 +63,9 @@ class CloudAuthService {
     return _api.authMe(token);
   }
 
+  bool canSwitchFarms(AuthMePayload me) =>
+      me.canViewAllFarms || me.farms.length > 1;
+
   FarmSummary? resolveDefaultFarm(List<FarmSummary> farms, AuthMePayload me) {
     if (farms.isEmpty) return null;
     final candidates = [

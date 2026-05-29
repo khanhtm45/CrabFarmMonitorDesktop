@@ -3,6 +3,7 @@ enum AppRoute {
   batches,
   batchDetail,
   farmAreas,
+  farmManagement,
   individuals,
   individualDetail,
   individualHealth,
@@ -25,6 +26,7 @@ extension AppRouteX on AppRoute {
         AppRoute.batches => 'Lứa nuôi',
         AppRoute.batchDetail => 'Chi tiết lứa',
         AppRoute.farmAreas => 'Bản đồ trại',
+        AppRoute.farmManagement => 'Quản lý trại',
         AppRoute.individuals => 'Cá thể cua',
         AppRoute.individualDetail => 'Chi tiết cá thể',
         AppRoute.individualHealth => 'Health Monitoring',
@@ -46,6 +48,7 @@ extension AppRouteX on AppRoute {
       this == AppRoute.batches ||
       this == AppRoute.batchDetail ||
       this == AppRoute.farmAreas ||
+      this == AppRoute.farmManagement ||
       this == AppRoute.individuals ||
       this == AppRoute.individualDetail ||
       this == AppRoute.individualHealth ||

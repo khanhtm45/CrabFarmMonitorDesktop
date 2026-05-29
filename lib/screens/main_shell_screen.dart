@@ -17,6 +17,7 @@ import 'crab/crab_detail_page.dart';
 import 'crab/crab_list_page.dart';
 import 'dashboard_screen.dart';
 import 'farm/farm_layout_page.dart';
+import 'farm/farm_management_page.dart';
 import 'health/health_monitoring_page.dart';
 import 'camera/camera_ai_page.dart';
 import 'environment/water_quality_page.dart';
@@ -33,6 +34,7 @@ import '../services/camera_ai_service.dart';
 import '../services/water_quality_service.dart';
 import '../services/iot_device_service.dart';
 import '../services/alert_service.dart';
+import '../services/farm_management_service.dart';
 import '../services/farm_log_service.dart';
 import '../services/feed_service.dart';
 import '../services/harvest_sales_service.dart';
@@ -41,6 +43,7 @@ import '../services/ai_assistant_service.dart';
 import '../services/sensor_kit_service.dart';
 import '../services/device_setup_service.dart';
 import '../models/auth_models.dart';
+import '../services/cloud_api_client.dart';
 import '../services/connectivity_link_service.dart';
 import '../services/theme_mode_service.dart';
 import 'login_screen.dart';
@@ -53,7 +56,6 @@ class MainShellScreen extends StatefulWidget {
 
   final AuthSession session;
 
-  String get displayName => session.user.displayName;
   String get email => session.user.email;
 
   @override
@@ -61,10 +63,13 @@ class MainShellScreen extends StatefulWidget {
 }
 
 class _MainShellScreenState extends State<MainShellScreen> {
+  late AuthSession _session;
+  final _cloudApi = CloudApiClient();
   final _batchService = BatchService();
   final _crabService = CrabService();
   final _cameraAiService = CameraAiService();
   late final WaterQualityService _waterQualityService;
+  late final FarmManagementService _farmManagementService;
   final _iotDeviceService = IotDeviceService();
   final _alertService = AlertService();
   final _farmLogService = FarmLogService();
@@ -82,11 +87,49 @@ class _MainShellScreenState extends State<MainShellScreen> {
   @override
   void initState() {
     super.initState();
+    _session = widget.session;
     _connectivityLinkService =
-        ConnectivityLinkService(session: widget.session);
-    _waterQualityService = WaterQualityService(session: widget.session);
+        ConnectivityLinkService(session: _session);
+    _waterQualityService = WaterQualityService(session: _session);
+    _farmManagementService = FarmManagementService(session: _session);
     _connectivityLinkService.addListener(_onConnectivityUpdate);
     _connectivityLinkService.refreshCloud();
+    if (_session.isOrgAdmin) {
+      _refreshAdminFarms();
+    }
+  }
+
+  void _syncSessionFarmsFromRecords() {
+    final summaries = _farmManagementService.farms
+        .map((f) => f.toSummary())
+        .toList();
+    if (summaries.isEmpty) return;
+    final selected = summaries.any((f) => f.id == _session.selectedFarm.id)
+        ? _session.selectedFarm
+        : summaries.first;
+    setState(() {
+      _session = _session.copyWith(farms: summaries, selectedFarm: selected);
+      _connectivityLinkService.updateSession(_session);
+      _waterQualityService.updateSession(_session);
+      _farmManagementService.updateSession(_session);
+    });
+  }
+
+  Future<void> _refreshAdminFarms() async {
+    try {
+      final farms = await _cloudApi.fetchFarms(_session.token);
+      if (!mounted || farms.isEmpty) return;
+      final selected = farms.any((f) => f.id == _session.selectedFarm.id)
+          ? _session.selectedFarm
+          : farms.first;
+      setState(() {
+        _session = _session.copyWith(farms: farms, selectedFarm: selected);
+        _connectivityLinkService.updateSession(_session);
+        _waterQualityService.updateSession(_session);
+      });
+    } catch (_) {
+      // Giữ danh sách từ /api/auth/me nếu refresh thất bại.
+    }
   }
 
   @override
@@ -96,6 +139,45 @@ class _MainShellScreenState extends State<MainShellScreen> {
   }
 
   void _onConnectivityUpdate() => setState(() {});
+
+  void _onFarmChanged(FarmSummary farm) {
+    if (farm.id == _session.selectedFarm.id) return;
+    setState(() {
+      _session = _session.copyWith(selectedFarm: farm);
+      _connectivityLinkService.updateSession(_session);
+      _waterQualityService.updateSession(_session);
+    });
+    _connectivityLinkService.refreshCloud();
+    _waterQualityService.refreshTrend(quiet: true);
+  }
+
+  AppTopBar _shellTopBar({
+    String? title,
+    String searchHint = 'Tìm kiếm...',
+    ValueChanged<String>? onSearchChanged,
+    int alertCount = 5,
+    Widget? leading,
+    Widget? centerTitle,
+  }) {
+    return AppTopBar(
+      title: title,
+      searchHint: searchHint,
+      onSearchChanged: onSearchChanged,
+      displayName: _session.user.displayName,
+      alertCount: alertCount,
+      leading: leading,
+      centerTitle: centerTitle,
+      onLogout: _logout,
+      connectivity: _connectivityLinkService,
+      onOpenDeviceSetup: _openDeviceSetupCloudEdge,
+      onSettingsTap: _openDeviceSetup,
+      farms: _session.farms,
+      selectedFarm: _session.selectedFarm,
+      onFarmChanged: (_session.isOrgAdmin || _session.farms.length > 1)
+          ? _onFarmChanged
+          : null,
+    );
+  }
 
   void _navigate(AppRoute route) {
     setState(() {
@@ -217,15 +299,10 @@ class _MainShellScreenState extends State<MainShellScreen> {
 
   Widget _buildTopBar() {
     if (_route == AppRoute.deviceSetup) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
+      return _shellTopBar(
         title: 'Device Setup',
         searchHint: 'Tìm node ESP32...',
         centerTitle: const SizedBox.shrink(),
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
         leading: IconButton(
           onPressed: () => _navigate(AppRoute.dashboard),
           icon: const Icon(Icons.arrow_back, color: Color(0xFF94A3B8)),
@@ -234,12 +311,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.batchDetail && _selectedBatch != null) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm lứa nuôi, thiết bị...',
         leading: IconButton(
           onPressed: _backToBatchList,
@@ -250,12 +322,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.individualHealth && _selectedCrabId != null) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm cá thể, thiết bị hoặc khu nuôi...',
         leading: IconButton(
           onPressed: _backToCrabDetail,
@@ -266,12 +333,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.individualDetail && _selectedCrabId != null) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm cá thể...',
         leading: IconButton(
           onPressed: _backToCrabList,
@@ -282,48 +344,36 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.batches) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm lứa nuôi...',
         onSearchChanged: _batchService.setSearch,
       );
     }
 
     if (_route == AppRoute.individuals) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm cá thể, thiết bị hoặc khu nuôi...',
         onSearchChanged: _crabService.setSearch,
       );
     }
 
     if (_route == AppRoute.farmAreas) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm hệ thống...',
         centerTitle: const SizedBox.shrink(),
       );
     }
 
+    if (_route == AppRoute.farmManagement) {
+      return _shellTopBar(
+        searchHint: 'Tìm mã trại, tên, địa chỉ...',
+        onSearchChanged: _farmManagementService.setSearch,
+        centerTitle: const SizedBox.shrink(),
+      );
+    }
+
     if (_route == AppRoute.cameraAi) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm cá thể, thiết bị hoặc khu nuôi...',
         onSearchChanged: _cameraAiService.setSearch,
         centerTitle: const SizedBox.shrink(),
@@ -331,24 +381,14 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.environment) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Khu nuôi, thiết bị...',
         centerTitle: const SizedBox.shrink(),
       );
     }
 
     if (_route == AppRoute.devices) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm thiết bị...',
         onSearchChanged: _iotDeviceService.setSearch,
         centerTitle: const SizedBox.shrink(),
@@ -356,12 +396,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.alerts) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm cảnh báo...',
         onSearchChanged: _alertService.setSearch,
         centerTitle: const SizedBox.shrink(),
@@ -369,12 +404,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.farmLogs) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm nhật ký, mã cua...',
         onSearchChanged: _farmLogService.setSearch,
         centerTitle: const SizedBox.shrink(),
@@ -382,12 +412,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.feed) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm kho, lịch cho ăn...',
         onSearchChanged: _feedService.setSearch,
         centerTitle: const SizedBox.shrink(),
@@ -395,12 +420,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.harvestSales) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm đơn hàng, mã cua...',
         onSearchChanged: _harvestSalesService.setSearch,
         centerTitle: const SizedBox.shrink(),
@@ -408,12 +428,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.reports) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm báo cáo, lứa nuôi...',
         onSearchChanged: _farmReportService.setSearch,
         centerTitle: const SizedBox.shrink(),
@@ -421,12 +436,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.aiInsight) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Hỏi Crab Assistant...',
         onSearchChanged: _aiAssistantService.setSearch,
         centerTitle: const SizedBox.shrink(),
@@ -434,33 +444,23 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     if (_route == AppRoute.sensorUpgrade) {
-      return AppTopBar(
-        displayName: widget.session.user.displayName,
-        onLogout: _logout,
-        connectivity: _connectivityLinkService,
-        onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-        onSettingsTap: _openDeviceSetup,
+      return _shellTopBar(
         searchHint: 'Tìm kiếm gói cảm biến...',
         centerTitle: const SizedBox.shrink(),
       );
     }
 
-    return AppTopBar(
+    return _shellTopBar(
       title: 'Dashboard Tổng Quan',
-      displayName: widget.displayName,
       alertCount: MockDashboardData.alertCount,
       searchHint: 'Tìm kiếm khu vực, ID cua...',
-      connectivity: _connectivityLinkService,
-      onOpenDeviceSetup: _openDeviceSetupCloudEdge,
-      onSettingsTap: _openDeviceSetup,
-      onLogout: _logout,
     );
   }
 
   Widget _buildBody() {
     switch (_route) {
       case AppRoute.dashboard:
-        return DashboardContent(displayName: widget.session.user.displayName);
+        return DashboardContent(displayName: _session.user.displayName);
       case AppRoute.batches:
         return BatchListPage(
           service: _batchService,
@@ -477,6 +477,11 @@ class _MainShellScreenState extends State<MainShellScreen> {
         );
       case AppRoute.farmAreas:
         return const FarmLayoutPage();
+      case AppRoute.farmManagement:
+        return FarmManagementPage(
+          service: _farmManagementService,
+          onFarmsChanged: _syncSessionFarmsFromRecords,
+        );
       case AppRoute.individuals:
         return CrabListPage(
           service: _crabService,

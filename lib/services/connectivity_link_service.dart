@@ -16,7 +16,7 @@ class ConnectivityLinkService extends ChangeNotifier {
     _cloud = _cloudFromSession(connected: true);
   }
 
-  final AuthSession _session;
+  AuthSession _session;
   final CloudApiClient _api;
 
   late ConnectivityLinkStatus _cloud;
@@ -38,6 +38,13 @@ class ConnectivityLinkService extends ChangeNotifier {
   String get farmLabel => _session.selectedFarm.name;
   String get farmCode => _session.selectedFarm.code;
   String get userEmail => _session.user.email;
+
+  void updateSession(AuthSession session) {
+    _session = session;
+    final connected = _cloud.isConnected;
+    _cloud = _cloudFromSession(connected: connected);
+    notifyListeners();
+  }
 
   String _timeNow() {
     final n = DateTime.now();

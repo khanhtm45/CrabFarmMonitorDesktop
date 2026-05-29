@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../config/app_env.dart';
 import '../models/auth_models.dart';
 import '../models/cloud_telemetry.dart';
+import '../models/farm_record.dart';
 
 class CloudApiException implements Exception {
   CloudApiException(this.message, {this.statusCode});
@@ -65,11 +66,143 @@ class CloudApiClient {
     );
   }
 
+  Map<String, String> authHeaders(String token, {String? farmId}) => {
+        'Authorization': 'Bearer $token',
+        if (farmId != null && farmId.isNotEmpty) 'X-Farm-Id': farmId,
+      };
+
+  Future<List<FarmRecord>> fetchFarmRecords(String token) async {
+    final uri = Uri.parse('$_base/api/farms');
+    final res = await _client.get(uri, headers: authHeaders(token));
+    final body = _decode(res);
+    if (res.statusCode == 401) {
+      throw CloudApiException('Phiên đăng nhập hết hạn', statusCode: 401);
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300 || body['ok'] == false) {
+      throw CloudApiException(
+        _errorMessage(body) ?? 'Không tải farms (${res.statusCode})',
+        statusCode: res.statusCode,
+      );
+    }
+    final raw = body['farms'] ?? body['Farms'];
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((e) => FarmRecord.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<List<FarmSummary>> fetchFarms(String token) async {
+    final records = await fetchFarmRecords(token);
+    return records.map((f) => f.toSummary()).toList();
+  }
+
+  Future<String> fetchNextFarmCode(String token) async {
+    final uri = Uri.parse('$_base/api/farms/next-code');
+    final res = await _client.get(uri, headers: authHeaders(token));
+    final body = _decode(res);
+    if (res.statusCode == 401) {
+      throw CloudApiException('Phiên đăng nhập hết hạn', statusCode: 401);
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300 || body['ok'] == false) {
+      throw CloudApiException(
+        _errorMessage(body) ?? 'Không lấy mã trại (${res.statusCode})',
+        statusCode: res.statusCode,
+      );
+    }
+    return (body['code'] ?? body['Code'] ?? '').toString();
+  }
+
+  Future<FarmRecord> createFarm(
+    String token, {
+    required String name,
+    String? address,
+    String? description,
+  }) async {
+    final uri = Uri.parse('$_base/api/farms');
+    final res = await _client.post(
+      uri,
+      headers: {
+        ...authHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'name': name,
+        'address': address,
+        'description': description,
+      }),
+    );
+    return _parseFarmMutation(res);
+  }
+
+  Future<FarmRecord> updateFarm(
+    String token,
+    String farmId, {
+    required String name,
+    String? address,
+    String? description,
+  }) async {
+    final uri = Uri.parse('$_base/api/farms/$farmId');
+    final res = await _client.put(
+      uri,
+      headers: {
+        ...authHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'name': name,
+        'address': address,
+        'description': description,
+      }),
+    );
+    return _parseFarmMutation(res);
+  }
+
+  Future<void> deleteFarm(String token, String farmId) async {
+    final uri = Uri.parse('$_base/api/farms/$farmId');
+    final res = await _client.delete(uri, headers: authHeaders(token));
+    if (res.statusCode == 401) {
+      throw CloudApiException('Phiên đăng nhập hết hạn', statusCode: 401);
+    }
+    if (res.statusCode == 204) return;
+    final body = _decode(res);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw CloudApiException(
+        _errorMessage(body) ?? 'Không xóa được trại (${res.statusCode})',
+        statusCode: res.statusCode,
+      );
+    }
+  }
+
+  FarmRecord _parseFarmMutation(http.Response res) {
+    final body = _decode(res);
+    if (res.statusCode == 401) {
+      throw CloudApiException('Phiên đăng nhập hết hạn', statusCode: 401);
+    }
+    if (res.statusCode == 403) {
+      throw CloudApiException(
+        _errorMessage(body) ?? 'Không có quyền',
+        statusCode: 403,
+      );
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300 || body['ok'] == false) {
+      throw CloudApiException(
+        _errorMessage(body) ?? 'Thao tác thất bại (${res.statusCode})',
+        statusCode: res.statusCode,
+      );
+    }
+    final farmRaw = body['farm'] ?? body['Farm'];
+    if (farmRaw is! Map) {
+      throw CloudApiException('Phản hồi thiếu farm');
+    }
+    return FarmRecord.fromJson(Map<String, dynamic>.from(farmRaw));
+  }
+
   Future<AuthMePayload> authMe(String token) async {
     final uri = Uri.parse('$_base/api/auth/me');
     final res = await _client.get(
       uri,
-      headers: {'Authorization': 'Bearer $token'},
+      headers: authHeaders(token),
     );
 
     final body = _decode(res);
@@ -147,6 +280,7 @@ class CloudApiClient {
     required String mac,
     required int minutes,
     int? pin,
+    String? farmId,
   }) async {
     final params = <String, String>{
       'mac': normalizeMac(mac),
@@ -159,7 +293,7 @@ class CloudApiClient {
     final res = await _client
         .get(
           uri,
-          headers: {'Authorization': 'Bearer $token'},
+          headers: authHeaders(token, farmId: farmId),
         )
         .timeout(const Duration(seconds: 45));
     final body = _decode(res);

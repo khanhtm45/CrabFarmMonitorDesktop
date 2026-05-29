@@ -52,12 +52,14 @@ class AuthMePayload {
     required this.user,
     required this.farms,
     required this.isOrgAdmin,
+    this.canViewAllFarms = false,
     this.defaultFarmId,
   });
 
   final AuthUser user;
   final List<FarmSummary> farms;
   final bool isOrgAdmin;
+  final bool canViewAllFarms;
   final String? defaultFarmId;
 
   factory AuthMePayload.fromJson(Map<String, dynamic> json) {
@@ -82,6 +84,10 @@ class AuthMePayload {
       user: AuthUser.fromJson(Map<String, dynamic>.from(userRaw)),
       farms: farms,
       isOrgAdmin: json['isOrgAdmin'] == true || json['IsOrgAdmin'] == true,
+      canViewAllFarms: json['canViewAllFarms'] == true ||
+          json['CanViewAllFarms'] == true ||
+          json['isOrgAdmin'] == true ||
+          json['IsOrgAdmin'] == true,
       defaultFarmId: _optionalStr(json, 'defaultFarmId', 'DefaultFarmId'),
     );
   }
@@ -101,6 +107,18 @@ class AuthSession {
   final List<FarmSummary> farms;
   final FarmSummary selectedFarm;
   final bool isOrgAdmin;
+
+  AuthSession copyWith({
+    FarmSummary? selectedFarm,
+    List<FarmSummary>? farms,
+  }) =>
+      AuthSession(
+        token: token,
+        user: user,
+        farms: farms ?? this.farms,
+        selectedFarm: selectedFarm ?? this.selectedFarm,
+        isOrgAdmin: isOrgAdmin,
+      );
 }
 
 String _str(

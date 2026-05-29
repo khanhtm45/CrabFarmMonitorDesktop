@@ -33,9 +33,14 @@ class WaterQualityService extends ChangeNotifier {
     _trendPoints = WaterTrendWindow.project(_trendBuffer, chartRangeMinutesValue);
   }
 
-  final AuthSession _session;
+  AuthSession _session;
   final CloudApiClient _api;
   final String _mac;
+
+  void updateSession(AuthSession session) {
+    _session = session;
+    notifyListeners();
+  }
 
   static const _pollInterval = Duration(seconds: 3);
 
@@ -219,6 +224,7 @@ class WaterQualityService extends ChangeNotifier {
           token: _session.token,
           mac: _mac,
           minutes: range,
+          farmId: _session.selectedFarm.id,
         );
         final built = WaterQualityCloudMerge.buildTrend(
           histPoints,
@@ -284,6 +290,7 @@ class WaterQualityService extends ChangeNotifier {
         token: _session.token,
         mac: _mac,
         minutes: _minutesForFilterRange(_timeRange),
+        farmId: _session.selectedFarm.id,
       );
       _history = WaterQualityCloudMerge.buildHistory(
         histPoints,
