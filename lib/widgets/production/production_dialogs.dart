@@ -78,7 +78,7 @@ Future<void> showBatchFormDialog(
     builder: (_) => _BatchFormDialog(
       svc: svc,
       existing: existing,
-      autoCode: existing?.batchCode ?? 'BT-… (mỗi hộp)',
+      autoCode: existing?.batchCode ?? 'BT-… (theo dãy)',
     ),
   );
 }

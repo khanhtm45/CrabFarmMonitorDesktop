@@ -2,45 +2,67 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/production_models.dart';
+import '../../navigation/app_route.dart';
 import '../../services/production_management_service.dart';
 import '../../theme/dashboard_theme.dart';
 import '../../widgets/dashboard/glass_card.dart';
 import '../../widgets/production/production_dialogs.dart';
 
-class ProductionManagementPage extends StatefulWidget {
-  const ProductionManagementPage({super.key, required this.service});
+/// Một màn hình quản lý theo cấp: khu, dãy, hộp, đợt nuôi hoặc cua.
+class ProductionEntityPage extends StatefulWidget {
+  const ProductionEntityPage({
+    super.key,
+    required this.service,
+    required this.route,
+  });
 
   final ProductionManagementService service;
+  final AppRoute route;
 
   @override
-  State<ProductionManagementPage> createState() =>
-      _ProductionManagementPageState();
+  State<ProductionEntityPage> createState() => _ProductionEntityPageState();
 }
 
-class _ProductionManagementPageState extends State<ProductionManagementPage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabs;
+class _ProductionEntityPageState extends State<ProductionEntityPage> {
+  ProductionTab get _tab => productionTabForRoute(widget.route);
+
+  String get _title => switch (_tab) {
+        ProductionTab.area => 'Quản lý khu',
+        ProductionTab.row => 'Quản lý dãy',
+        ProductionTab.box => 'Quản lý hộp nuôi',
+        ProductionTab.batch => 'Quản lý đợt nuôi',
+        ProductionTab.crab => 'Quản lý cua',
+      };
+
+  String get _subtitle => switch (_tab) {
+        ProductionTab.area =>
+          'Mã tự động K- theo trại — thêm, sửa, xóa khu nuôi',
+        ProductionTab.row => 'Mã D- theo khu — chọn khu rồi quản lý dãy',
+        ProductionTab.box => 'Mã H- theo dãy — thêm 1 hoặc nhiều hộp (bulk)',
+        ProductionTab.batch =>
+          'Mã BT- — tạo đợt cho nhiều hộp, ngày bắt đầu/kết thúc',
+        ProductionTab.crab => 'Mã C- theo đợt — cá thể trong đợt nuôi',
+      };
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 5, vsync: this);
-    _tabs.addListener(_onTabChanged);
     widget.service.addListener(_onUpdate);
-    widget.service.loadAreas();
+    widget.service.setTab(_tab);
+    widget.service.loadCurrentTab();
   }
 
-  void _onTabChanged() {
-    if (!_tabs.indexIsChanging) {
-      widget.service.setTab(ProductionTab.values[_tabs.index]);
+  @override
+  void didUpdateWidget(covariant ProductionEntityPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.route != widget.route) {
+      widget.service.setTab(_tab);
       widget.service.loadCurrentTab();
     }
   }
 
   @override
   void dispose() {
-    _tabs.removeListener(_onTabChanged);
-    _tabs.dispose();
     widget.service.removeListener(_onUpdate);
     super.dispose();
   }
@@ -61,7 +83,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Quản lý sản xuất',
+                _title,
                 style: GoogleFonts.notoSans(
                   color: DashboardColors.textPrimary,
                   fontSize: 28,
@@ -70,7 +92,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage>
               ),
               const SizedBox(height: 8),
               Text(
-                'Trại: ${farm.name} (${farm.code}) — Mã tự động K-, D-, H-, BT-, C- theo từng cấp',
+                'Trại: ${farm.name} (${farm.code}) — $_subtitle',
                 style: GoogleFonts.notoSans(
                   color: DashboardColors.textMuted,
                   fontSize: 14,
@@ -78,42 +100,36 @@ class _ProductionManagementPageState extends State<ProductionManagementPage>
               ),
               if (svc.error != null) ...[
                 const SizedBox(height: 12),
-                Text(svc.error!, style: GoogleFonts.notoSans(color: DashboardColors.risk)),
+                Text(
+                  svc.error!,
+                  style: GoogleFonts.notoSans(color: DashboardColors.risk),
+                ),
               ],
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        TabBar(
-          controller: _tabs,
-          isScrollable: true,
-          labelColor: DashboardColors.cyan,
-          unselectedLabelColor: DashboardColors.textMuted,
-          indicatorColor: DashboardColors.cyan,
-          tabs: const [
-            Tab(text: 'Khu'),
-            Tab(text: 'Dãy'),
-            Tab(text: 'Hộp nuôi'),
-            Tab(text: 'Đợt nuôi'),
-            Tab(text: 'Cua'),
-          ],
-        ),
         Expanded(
-          child: TabBarView(
-            controller: _tabs,
-            children: [
-              _AreaTab(svc: svc),
-              _RowTab(svc: svc),
-              _BoxTab(svc: svc),
-              _BatchTab(svc: svc),
-              _CrabTab(svc: svc),
-            ],
-          ),
+          child: switch (_tab) {
+            ProductionTab.area => _AreaTab(svc: svc),
+            ProductionTab.row => _RowTab(svc: svc),
+            ProductionTab.box => _BoxTab(svc: svc),
+            ProductionTab.batch => _BatchTab(svc: svc),
+            ProductionTab.crab => _CrabTab(svc: svc),
+          },
         ),
       ],
     );
   }
 }
+
+ProductionTab productionTabForRoute(AppRoute route) => switch (route) {
+      AppRoute.areaManagement => ProductionTab.area,
+      AppRoute.rowManagement => ProductionTab.row,
+      AppRoute.boxManagement => ProductionTab.box,
+      AppRoute.farmingBatchManagement => ProductionTab.batch,
+      AppRoute.productionCrabManagement => ProductionTab.crab,
+      _ => ProductionTab.area,
+    };
 
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
@@ -137,7 +153,9 @@ class _Toolbar extends StatelessWidget {
             onPressed: svc.loading ? null : onAdd,
             icon: const Icon(Icons.add, size: 18),
             label: Text(addLabel),
-            style: FilledButton.styleFrom(backgroundColor: DashboardColors.purple),
+            style: FilledButton.styleFrom(
+              backgroundColor: DashboardColors.purple,
+            ),
           ),
         const Spacer(),
         IconButton(
@@ -231,7 +249,9 @@ class _AreaTab extends StatelessWidget {
                 onDelete: () async {
                   if (!await confirmDelete(context,
                       title: 'Xóa khu?',
-                      message: '${a.areaName} (${a.areaCode})?')) return;
+                      message: '${a.areaName} (${a.areaCode})?')) {
+                    return;
+                  }
                   try {
                     await svc.deleteArea(a);
                     if (context.mounted) {
@@ -306,7 +326,9 @@ class _RowTab extends StatelessWidget {
                 onDelete: () async {
                   if (!await confirmDelete(context,
                       title: 'Xóa dãy?',
-                      message: '${r.rowName} (${r.rowCode})?')) return;
+                      message: '${r.rowName} (${r.rowCode})?')) {
+                    return;
+                  }
                   try {
                     await svc.deleteRow(r);
                   } catch (e) {
@@ -385,8 +407,9 @@ class _BoxTab extends StatelessWidget {
                 onEdit: () => showBoxFormDialog(context, svc, existing: b),
                 onDelete: () async {
                   if (!await confirmDelete(context,
-                      title: 'Xóa hộp?',
-                      message: b.boxCode)) return;
+                      title: 'Xóa hộp?', message: b.boxCode)) {
+                    return;
+                  }
                   try {
                     await svc.deleteBox(b);
                   } catch (e) {
@@ -432,9 +455,7 @@ class _BatchTab extends StatelessWidget {
             value: svc.selectedRowId,
             items: svc.rows,
             itemLabel: (r) => '${r.rowCode} — ${r.rowName}',
-            onChanged: (id) {
-              svc.selectRow(id);
-            },
+            onChanged: svc.selectRow,
           ),
           _Toolbar(
             svc: svc,
@@ -478,8 +499,9 @@ class _BatchTab extends StatelessWidget {
                 onEdit: () => showBatchFormDialog(context, svc, existing: b),
                 onDelete: () async {
                   if (!await confirmDelete(context,
-                      title: 'Xóa đợt?',
-                      message: b.batchCode)) return;
+                      title: 'Xóa đợt?', message: b.batchCode)) {
+                    return;
+                  }
                   try {
                     await svc.deleteBatch(b);
                   } catch (e) {
@@ -515,11 +537,31 @@ class _CrabTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = svc.filteredCrabs;
+
     return _TabScaffold(
       svc: svc,
       toolbar: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _ParentDropdown<AreaRecord>(
+            label: 'Khu',
+            value: svc.selectedAreaId,
+            items: svc.areas,
+            itemLabel: (a) => '${a.areaCode} — ${a.areaName}',
+            onChanged: (id) {
+              svc.selectArea(id);
+              if (id != null) svc.loadRows();
+            },
+          ),
+          _ParentDropdown<RowRecord>(
+            label: 'Dãy',
+            value: svc.selectedRowId,
+            items: svc.rows,
+            itemLabel: (r) => '${r.rowCode} — ${r.rowName}',
+            onChanged: (id) {
+              svc.selectRow(id);
+            },
+          ),
           _ParentDropdown<BoxRecord>(
             label: 'Hộp nuôi',
             value: svc.selectedBoxId,
@@ -534,7 +576,7 @@ class _CrabTab extends StatelessWidget {
             label: 'Đợt nuôi',
             value: svc.selectedBatchId,
             items: svc.batches,
-            itemLabel: (b) => b.batchCode,
+            itemLabel: (b) => b.displayLabel,
             onChanged: svc.selectBatch,
           ),
           _Toolbar(
@@ -571,8 +613,9 @@ class _CrabTab extends StatelessWidget {
                 onEdit: () => showCrabFormDialog(context, svc, existing: c),
                 onDelete: () async {
                   if (!await confirmDelete(context,
-                      title: 'Xóa cua?',
-                      message: c.crabCode)) return;
+                      title: 'Xóa cua?', message: c.crabCode)) {
+                    return;
+                  }
                   try {
                     await svc.deleteCrab(c);
                   } catch (e) {
@@ -671,8 +714,11 @@ Widget _rowActions({
       IconButton(
         tooltip: 'Xóa',
         onPressed: onDelete,
-        icon: Icon(Icons.delete_outline,
-            size: 20, color: DashboardColors.risk.withValues(alpha: 0.9)),
+        icon: Icon(
+          Icons.delete_outline,
+          size: 20,
+          color: DashboardColors.risk.withValues(alpha: 0.9),
+        ),
       ),
     ],
   );

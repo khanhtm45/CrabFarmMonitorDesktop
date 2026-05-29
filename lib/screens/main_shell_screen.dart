@@ -18,7 +18,7 @@ import 'crab/crab_list_page.dart';
 import 'dashboard_screen.dart';
 import 'farm/farm_layout_page.dart';
 import 'farm/farm_management_page.dart';
-import 'production/production_management_page.dart';
+import 'production/production_entity_page.dart';
 import 'health/health_monitoring_page.dart';
 import 'camera/camera_ai_page.dart';
 import 'environment/water_quality_page.dart';
@@ -159,8 +159,8 @@ class _MainShellScreenState extends State<MainShellScreen> {
     });
     _connectivityLinkService.updateSession(_session);
     _waterQualityService.updateSession(_session);
-    if (_route == AppRoute.productionManagement) {
-      _productionManagementService.loadAreas();
+    if (_route.isProductionRoute) {
+      _productionManagementService.loadCurrentTab();
     }
     _connectivityLinkService.refreshCloud();
     _waterQualityService.refreshTrend(quiet: true);
@@ -205,8 +205,9 @@ class _MainShellScreenState extends State<MainShellScreen> {
         _selectedCrabId = null;
       }
     });
-    if (route == AppRoute.productionManagement) {
-      _productionManagementService.loadAreas();
+    if (route.isProductionRoute) {
+      _productionManagementService.setTab(productionTabForRoute(route));
+      _productionManagementService.loadCurrentTab();
     }
   }
 
@@ -390,9 +391,17 @@ class _MainShellScreenState extends State<MainShellScreen> {
       );
     }
 
-    if (_route == AppRoute.productionManagement) {
+    if (_route.isProductionRoute) {
+      final hint = switch (_route) {
+        AppRoute.areaManagement => 'Tìm mã khu, tên khu...',
+        AppRoute.rowManagement => 'Tìm mã dãy, tên dãy...',
+        AppRoute.boxManagement => 'Tìm mã hộp, vị trí...',
+        AppRoute.farmingBatchManagement => 'Tìm mã đợt nuôi...',
+        AppRoute.productionCrabManagement => 'Tìm mã cua...',
+        _ => 'Tìm kiếm...',
+      };
       return _shellTopBar(
-        searchHint: 'Tìm mã khu, dãy, hộp, đợt, cua...',
+        searchHint: hint,
         onSearchChanged: _productionManagementService.setSearch,
         centerTitle: const SizedBox.shrink(),
       );
@@ -508,9 +517,14 @@ class _MainShellScreenState extends State<MainShellScreen> {
           service: _farmManagementService,
           onFarmsChanged: _syncSessionFarmsFromRecords,
         );
-      case AppRoute.productionManagement:
-        return ProductionManagementPage(
+      case AppRoute.areaManagement:
+      case AppRoute.rowManagement:
+      case AppRoute.boxManagement:
+      case AppRoute.farmingBatchManagement:
+      case AppRoute.productionCrabManagement:
+        return ProductionEntityPage(
           service: _productionManagementService,
+          route: _route,
         );
       case AppRoute.individuals:
         return CrabListPage(

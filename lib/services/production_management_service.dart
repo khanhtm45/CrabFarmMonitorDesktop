@@ -142,7 +142,9 @@ class ProductionManagementService extends ChangeNotifier {
     final q = _q(search);
     if (q.isEmpty) return batches;
     return batches
-        .where((b) => b.batchCode.toLowerCase().contains(q))
+        .where((b) =>
+            b.batchCode.toLowerCase().contains(q) ||
+            (b.boxCode?.toLowerCase().contains(q) ?? false))
         .toList();
   }
 

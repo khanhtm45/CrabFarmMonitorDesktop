@@ -97,6 +97,13 @@ class FarmingBatchRecord {
   final int currentQuantity;
   final String status;
 
+  /// Nhãn dropdown: BT-3 — H-5 (mã đợt có thể trùng giữa các hộp).
+  String get displayLabel {
+    final box = boxCode?.trim();
+    if (box != null && box.isNotEmpty) return '$batchCode — $box';
+    return batchCode;
+  }
+
   static DateTime? _parseDate(dynamic raw) {
     if (raw == null) return null;
     final s = raw.toString();
